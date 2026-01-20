@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -50,11 +52,24 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.21"
+
+      - name: Debug - List files
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Contents:"
+          ls -la
+          echo "cmd directory:"
+          ls -la cmd/ || echo "cmd not found"
+          echo "cmd/gq directory:"
+          ls -la cmd/gq/ || echo "cmd/gq not found"
 
       - name: Get version
         id: version
@@ -64,7 +79,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
+          CGO_ENABLED: "0"
         run: |
           go build -ldflags "-X github.com/sa001gar/gopherqueue/cli.Version=${{ steps.version.outputs.VERSION }} -X github.com/sa001gar/gopherqueue/cli.BuildDate=$(date -u +'%Y-%m-%d') -X github.com/sa001gar/gopherqueue/cli.GitCommit=${{ github.sha }}" -o gq-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }} ./cmd/gq
 
