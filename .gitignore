@@ -1,10 +1,11 @@
-# Binaries
-gq
-gq.exe
-gopherqueue
-gopherqueue.exe
-*.exe
-*.exe~
+# Binaries (in root only)
+/gq
+/gq.exe
+/gopherqueue
+/gopherqueue.exe
+
+# Binary files
+gq-*
 *.dll
 *.so
 *.dylib
