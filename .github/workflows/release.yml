@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test before release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Run tests
+        run: go test -v -race ./...
+
+  build:
+    name: Build binaries
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: ""
+          - goos: linux
+            goarch: arm64
+            suffix: ""
+          - goos: darwin
+            goarch: amd64
+            suffix: ""
+          - goos: darwin
+            goarch: arm64
+            suffix: ""
+          - goos: windows
+            goarch: amd64
+            suffix: ".exe"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags "-X github.com/sa001gar/gopherqueue/cli.Version=${{ steps.version.outputs.VERSION }} -X github.com/sa001gar/gopherqueue/cli.BuildDate=$(date -u +'%Y-%m-%d') -X github.com/sa001gar/gopherqueue/cli.GitCommit=${{ github.sha }}" -o gq-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }} ./cmd/gq
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gq-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: gq-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./binaries
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find ./binaries -type f -exec cp {} ./release/ \;
+          cd release
+          for f in *; do
+            sha256sum "$f" > "$f.sha256"
+          done
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: GopherQueue ${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+          generate_release_notes: true
+          files: |
+            release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-pkg:
+    name: Notify pkg.go.dev
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger pkg.go.dev update
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          curl -s "https://proxy.golang.org/github.com/sa001gar/gopherqueue/@v/${VERSION}.info" || true
