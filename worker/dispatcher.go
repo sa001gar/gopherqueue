@@ -92,7 +92,7 @@ func (d *SimpleDispatcher) dispatchLoop(ctx context.Context) {
 
 			if err := d.pool.Submit(job); err != nil {
 				// Re-enqueue on failure
-				d.scheduler.Enqueue(ctx, job)
+				_ = d.scheduler.Enqueue(ctx, job)
 				continue
 			}
 

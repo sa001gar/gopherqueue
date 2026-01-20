@@ -55,7 +55,7 @@ func init() {
 	submitCmd.Flags().StringVar(&jobCorrelation, "correlation-id", "", "correlation ID for tracing")
 	submitCmd.Flags().StringSliceVar(&jobTags, "tag", nil, "tags in key=value format")
 
-	submitCmd.MarkFlagRequired("type")
+	_ = submitCmd.MarkFlagRequired("type")
 }
 
 func runSubmit(cmd *cobra.Command, args []string) error {

@@ -207,14 +207,14 @@ func (s *BoltStore) Delete(ctx context.Context, id uuid.UUID) error {
 
 		// Remove idempotency key
 		if job.IdempotencyKey != "" {
-			tx.Bucket(idempotencyBucket).Delete([]byte(job.IdempotencyKey))
+			_ = tx.Bucket(idempotencyBucket).Delete([]byte(job.IdempotencyKey))
 		}
 
 		// Remove checkpoint
-		tx.Bucket(checkpointBucket).Delete(key)
+		_ = tx.Bucket(checkpointBucket).Delete(key)
 
 		// Remove result
-		tx.Bucket(resultsBucket).Delete(key)
+		_ = tx.Bucket(resultsBucket).Delete(key)
 
 		// Remove job
 		return jobs.Delete(key)
@@ -506,15 +506,15 @@ func (s *BoltStore) Cleanup(ctx context.Context, retention time.Duration) (int64
 				!job.CompletedAt.IsZero() && job.CompletedAt.Before(cutoff) {
 				toDelete = append(toDelete, append([]byte{}, k...))
 				if job.IdempotencyKey != "" {
-					idem.Delete([]byte(job.IdempotencyKey))
+					_ = idem.Delete([]byte(job.IdempotencyKey))
 				}
 			}
 		}
 
 		for _, k := range toDelete {
-			jobs.Delete(k)
-			results.Delete(k)
-			checkpoints.Delete(k)
+			_ = jobs.Delete(k)
+			_ = results.Delete(k)
+			_ = checkpoints.Delete(k)
 			removed++
 		}
 

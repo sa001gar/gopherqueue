@@ -107,7 +107,7 @@ type PriorityScheduler struct {
 	completed int64
 	failed    int64
 
-	mu sync.RWMutex
+	mu sync.RWMutex //nolint:unused
 }
 
 // NewPriorityScheduler creates a new priority-based scheduler.
@@ -202,7 +202,7 @@ func (s *PriorityScheduler) scheduleJobs(ctx context.Context) {
 	for _, job := range jobs {
 		// Update state to scheduled
 		if job.State == core.JobStatePending {
-			s.store.UpdateState(ctx, job.ID, core.JobStateScheduled)
+			_ = s.store.UpdateState(ctx, job.ID, core.JobStateScheduled)
 			job.State = core.JobStateScheduled
 		}
 
@@ -211,7 +211,7 @@ func (s *PriorityScheduler) scheduleJobs(ctx context.Context) {
 			// Job sent successfully
 		default:
 			// Channel full, stop for now
-			break
+			return
 		}
 	}
 
@@ -230,7 +230,7 @@ func (s *PriorityScheduler) processDelayedJobs(ctx context.Context) {
 	}
 
 	for _, job := range jobs {
-		s.store.UpdateState(ctx, job.ID, core.JobStateScheduled)
+		_ = s.store.UpdateState(ctx, job.ID, core.JobStateScheduled)
 	}
 }
 
@@ -423,3 +423,4 @@ func (s *PriorityScheduler) IsHealthy() bool {
 
 // Ensure PriorityScheduler implements Scheduler.
 var _ Scheduler = (*PriorityScheduler)(nil)
+

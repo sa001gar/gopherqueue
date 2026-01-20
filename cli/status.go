@@ -15,7 +15,6 @@ import (
 )
 
 var (
-	statusJobID  string
 	statusState  string
 	statusType   string
 	statusFormat string
@@ -283,3 +282,4 @@ func formatTime(t interface{}) string {
 	}
 	return parsed.Format("2006-01-02 15:04:05")
 }
+

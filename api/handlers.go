@@ -245,7 +245,7 @@ func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request, id uuid.UUID)
 		Reason string `json:"reason"`
 		Force  bool   `json:"force"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	if err := s.scheduler.Cancel(r.Context(), id, req.Reason, req.Force); err != nil {
 		if err == core.ErrJobNotFound {
@@ -274,7 +274,7 @@ func (s *Server) retryJob(w http.ResponseWriter, r *http.Request, id uuid.UUID) 
 	var req struct {
 		ResetAttempts bool `json:"reset_attempts"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	if err := s.scheduler.Retry(r.Context(), id, req.ResetAttempts); err != nil {
 		if err == core.ErrJobNotFound {

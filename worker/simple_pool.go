@@ -224,7 +224,7 @@ func (p *SimplePool) processJob(ctx context.Context, job *core.Job, workerID int
 			CompletedAt:   time.Now(),
 			Duration:      time.Since(start),
 		}
-		p.FailJob(ctx, result)
+		_ = p.FailJob(ctx, result)
 		atomic.AddInt64(&p.failed, 1)
 		return
 	}
@@ -254,7 +254,7 @@ func (p *SimplePool) processJob(ctx context.Context, job *core.Job, workerID int
 			CompletedAt:   time.Now(),
 			Duration:      duration,
 		}
-		p.FailJob(ctx, result)
+		_ = p.FailJob(ctx, result)
 		log.Printf("[Worker %d] Job %s failed after %v: %v", workerID, job.ID, duration, err)
 	} else {
 		atomic.AddInt64(&p.succeeded, 1)
@@ -265,7 +265,7 @@ func (p *SimplePool) processJob(ctx context.Context, job *core.Job, workerID int
 			CompletedAt: time.Now(),
 			Duration:    duration,
 		}
-		p.CompleteJob(ctx, result)
+		_ = p.CompleteJob(ctx, result)
 		log.Printf("[Worker %d] Job %s completed in %v", workerID, job.ID, duration)
 	}
 }

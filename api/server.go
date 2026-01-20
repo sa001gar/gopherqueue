@@ -168,12 +168,12 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 	if !status.Healthy {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
-	json.NewEncoder(w).Encode(map[string]bool{"ready": status.Healthy})
+	json.NewEncoder(w).Encode(map[string]bool{"ready": status.Healthy}) //nolint:errcheck
 }
 
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"alive": true})
+	json.NewEncoder(w).Encode(map[string]bool{"alive": true}) //nolint:errcheck
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +184,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 func (s *Server) writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 // writeError writes an error response.

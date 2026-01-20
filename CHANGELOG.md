@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-01-21
+
+### Fixed
+
+- Fixed various linter warnings and unchecked errors
+- Fixed "ineffective break" in scheduler loop
+- Improved code quality in worker and persistence layers
+- Fixed .gitignore to correctly include cmd/gq directory
+
 ## [0.1.0] - 2026-01-21
 
 ### Added

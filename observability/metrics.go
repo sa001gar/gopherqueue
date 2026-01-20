@@ -147,7 +147,7 @@ func (m *SimpleMetrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metrics := m.GetMetrics()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(metrics)
+	_ = json.NewEncoder(w).Encode(metrics)
 }
 
 // HealthChecker provides health check endpoints.
@@ -253,7 +253,7 @@ func (h *SimpleHealthChecker) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	if !status.Healthy {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
-	json.NewEncoder(w).Encode(status)
+	_ = json.NewEncoder(w).Encode(status)
 }
 
 // Ensure implementations match interfaces.

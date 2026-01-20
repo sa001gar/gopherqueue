@@ -118,7 +118,7 @@ func (r *SimpleRecoveryManager) runRecoveryLoop(ctx context.Context) {
 		case <-r.stopCh:
 			return
 		case <-ticker.C:
-			r.RecoverStuckJobs(ctx)
+			_, _ = r.RecoverStuckJobs(ctx)
 		}
 	}
 }
