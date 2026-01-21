@@ -1,6 +1,6 @@
 {
   "name": "gopherqueue",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "TypeScript/JavaScript SDK for GopherQueue - Enterprise-grade background job processing",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

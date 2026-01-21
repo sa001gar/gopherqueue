@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gopherqueue"
-version = "1.0.0"
+version = "1.1.1"
 description = "Python SDK for GopherQueue - Enterprise-grade background job processing"
 readme = "README.md"
 license = "MIT"
