@@ -7,14 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       sdk:
-        description: "SDK to release (python, javascript, java, all)"
+        description: "SDK to release (python, javascript, all)"
         required: true
         default: "all"
         type: choice
         options:
           - python
           - javascript
-          - java
           - all
 
 permissions:
@@ -45,7 +44,7 @@ jobs:
         run: npm run build
 
       - name: Run tests
-        run: npm test || true # Continue even if no tests
+        run: npm test || true
 
       - name: Publish to npm
         if: github.event_name == 'push'
@@ -83,34 +82,3 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         run: twine upload dist/*
-
-  # Java SDK
-  java:
-    name: Publish Java SDK
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || github.event.inputs.sdk == 'java' || github.event.inputs.sdk == 'all' }}
-    defaults:
-      run:
-        working-directory: sdks/java
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: "temurin"
-          cache: "maven"
-
-      - name: Build and test
-        run: mvn clean verify
-
-      - name: Publish to Maven Central
-        if: github.event_name == 'push'
-        env:
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
-        run: |
-          echo "${{ secrets.MAVEN_GPG_KEY }}" | base64 -d | gpg --batch --import
-          mvn deploy -P release -DskipTests

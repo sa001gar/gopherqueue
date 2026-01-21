@@ -5,15 +5,16 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/sa001gar/gopherqueue.svg)](https://pkg.go.dev/github.com/sa001gar/gopherqueue)
 [![Go Report Card](https://goreportcard.com/badge/github.com/sa001gar/gopherqueue)](https://goreportcard.com/report/github.com/sa001gar/gopherqueue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm](https://img.shields.io/npm/v/gopherqueue)](https://www.npmjs.com/package/gopherqueue)
 
 **🚀 Enterprise-grade, local-first background job engine for Go**
 
-_Zero external dependencies • BoltDB persistence • Multi-language SDKs_
+_Zero external dependencies • BoltDB persistence • Python & TypeScript SDKs_
 
 [Quick Start](#-quick-start) •
 [SDKs](#-multi-language-sdks) •
 [Documentation](#-documentation) •
-[Contributing](#contributing)
+[Contributing](#-contributing)
 
 </div>
 
@@ -75,7 +76,7 @@ Use GopherQueue from any language with our official SDKs.
 
 <table>
 <tr>
-<td width="33%">
+<td width="50%">
 
 ### 🐍 Python
 
@@ -88,10 +89,11 @@ from gopherqueue import GopherQueueSync
 
 queue = GopherQueueSync("http://localhost:8080")
 job = queue.submit("email", {"to": "user@example.com"})
+print(f"Job {job.id} queued!")
 ```
 
 </td>
-<td width="33%">
+<td width="50%">
 
 ### 📜 TypeScript / JavaScript
 
@@ -104,24 +106,7 @@ import { GopherQueue } from "gopherqueue";
 
 const queue = new GopherQueue("http://localhost:8080");
 const job = await queue.submit("email", { to: "user@example.com" });
-```
-
-</td>
-<td width="33%">
-
-### ☕ Java
-
-```xml
-<dependency>
-  <groupId>dev.gopherqueue</groupId>
-  <artifactId>gopherqueue-sdk</artifactId>
-  <version>1.0.0</version>
-</dependency>
-```
-
-```java
-var client = new GopherQueueClient("http://localhost:8080");
-var job = client.submit("email", Map.of("to", "user@example.com")).get();
+console.log(`Job ${job.id} queued!`);
 ```
 
 </td>
@@ -204,7 +189,6 @@ var job = client.submit("email", Map.of("to", "user@example.com")).get();
 | ------------------ | ------------------------------------------------------------------------------------------ |
 | 🐍 Django          | [Complete Integration Guide](docs/SDK_GUIDE.md#django-python---complete-integration-guide) |
 | ⚛️ Next.js         | [API Routes Example](docs/SDK_GUIDE.md#nextjs-nodejs)                                      |
-| 🍃 Spring Boot     | [Service Example](docs/SDK_GUIDE.md#spring-boot-java)                                      |
 | 🌶️ Flask / FastAPI | [Python Web Frameworks](docs/SDK_GUIDE.md#flask--fastapi)                                  |
 
 ---
@@ -221,18 +205,24 @@ gopherqueue/
 ├── observability/ # Metrics & health
 ├── persistence/   # Storage (BoltDB)
 ├── scheduler/     # Priority queue
-├── sdks/          # Python, JS, Java SDKs
+├── sdks/          # Python & TypeScript SDKs
 ├── security/      # Auth & authorization
 └── worker/        # Job execution
 ```
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 Contributions welcome! Please read our [Contributing Guide](CONTRIBUTING.md).
 
-## License
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
 
 MIT License — see [LICENSE](LICENSE).
 

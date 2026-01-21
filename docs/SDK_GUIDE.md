@@ -1,16 +1,16 @@
-# GopherQueue Multi-Language SDK Guide
+# GopherQueue SDK Guide
 
-GopherQueue provides official SDKs for Python, JavaScript/TypeScript, and Java. All SDKs communicate with the GopherQueue HTTP API and provide idiomatic interfaces for each language.
+GopherQueue provides official SDKs for **Python** and **JavaScript/TypeScript**. All SDKs communicate with the GopherQueue HTTP API and provide idiomatic interfaces for each language.
 
 ## Quick Reference
 
-| Feature         | Python             | JavaScript/TS      | Java                 |
-| --------------- | ------------------ | ------------------ | -------------------- |
-| Async Support   | ✅ asyncio         | ✅ async/await     | ✅ CompletableFuture |
-| Sync Support    | ✅ httpx           | ❌ async only      | ✅ .get() blocking   |
-| Type Hints      | ✅ Full            | ✅ TypeScript      | ✅ Full              |
-| SSE Events      | ✅ async generator | ✅ async generator | ❌ Not yet           |
-| Package Manager | pip                | npm                | Maven                |
+| Feature         | Python             | JavaScript/TS      |
+| --------------- | ------------------ | ------------------ |
+| Async Support   | ✅ asyncio         | ✅ async/await     |
+| Sync Support    | ✅ httpx           | ❌ async only      |
+| Type Hints      | ✅ Full            | ✅ TypeScript      |
+| SSE Events      | ✅ async generator | ✅ async generator |
+| Package Manager | pip                | npm                |
 
 ---
 
@@ -109,48 +109,6 @@ for await (const event of client.events({ jobTypes: ["email"] })) {
 
 ---
 
-## Java SDK
-
-### Installation (Maven)
-
-```xml
-<dependency>
-    <groupId>dev.gopherqueue</groupId>
-    <artifactId>gopherqueue-sdk</artifactId>
-    <version>1.0.0</version>
-</dependency>
-```
-
-### Basic Usage
-
-```java
-try (GopherQueueClient client = new GopherQueueClient("http://localhost:8080")) {
-    // Submit a job
-    Job job = client.submit("email", Map.of("to", "user@example.com")).get();
-    System.out.println("Created job: " + job.getId());
-
-    // Wait for completion
-    WaitResult result = client.wait(job.getId(), Duration.ofSeconds(30)).get();
-    if (result.isSuccess()) {
-        System.out.println("Job completed successfully!");
-    }
-}
-```
-
-### With Options
-
-```java
-SubmitOptions options = SubmitOptions.builder()
-    .priority(Priority.HIGH)
-    .delay(Duration.ofMinutes(5))
-    .maxAttempts(3)
-    .build();
-
-Job job = client.submit("email", payload, options).get();
-```
-
----
-
 ## Common Operations
 
 ### Batch Job Submission
@@ -179,25 +137,15 @@ const result = await client.submitBatch(
 );
 ```
 
-**Java:**
-
-```java
-List<Map<String, Object>> jobs = List.of(
-    Map.of("type", "email", "payload", Map.of("to", "user1@example.com")),
-    Map.of("type", "email", "payload", Map.of("to", "user2@example.com"))
-);
-BatchResult result = client.submitBatch(jobs, true).get();
-```
-
 ### Error Handling
 
 All SDKs provide specific exception types:
 
-| Error      | Python                | JavaScript            | Java                   |
-| ---------- | --------------------- | --------------------- | ---------------------- |
-| Not Found  | `JobNotFoundError`    | `JobNotFoundError`    | `JobNotFoundException` |
-| Validation | `ValidationError`     | `ValidationError`     | `GopherQueueException` |
-| Auth       | `AuthenticationError` | `AuthenticationError` | `GopherQueueException` |
+| Error      | Python                | JavaScript            |
+| ---------- | --------------------- | --------------------- |
+| Not Found  | `JobNotFoundError`    | `JobNotFoundError`    |
+| Validation | `ValidationError`     | `ValidationError`     |
+| Auth       | `AuthenticationError` | `AuthenticationError` |
 
 ### Queue Statistics
 
@@ -209,11 +157,6 @@ print(f"Pending: {stats.pending}, Running: {stats.running}")
 ```typescript
 const stats = await client.stats();
 console.log(`Pending: ${stats.pending}, Running: ${stats.running}`);
-```
-
-```java
-QueueStats stats = client.stats().get();
-System.out.println("Pending: " + stats.getPending());
 ```
 
 ---
@@ -582,53 +525,6 @@ async def get_job(job_id: str):
 async def wait_for_job(job_id: str, timeout: int = 30):
     result = await queue.wait(job_id, timeout=timeout)
     return {"completed": result.completed, "success": result.success}
-```
-
-### Spring Boot (Java)
-
-Use a Service bean to manage the GopherQueue client.
-
-**`pom.xml`:**
-
-```xml
-<dependency>
-    <groupId>dev.gopherqueue</groupId>
-    <artifactId>gopherqueue-sdk</artifactId>
-    <version>1.0.0</version>
-</dependency>
-```
-
-**`QueueService.java`:**
-
-```java
-import dev.gopherqueue.GopherQueueClient;
-import dev.gopherqueue.Job;
-import org.springframework.stereotype.Service;
-import javax.annotation.PreDestroy;
-import java.util.Map;
-import java.util.concurrent.ExecutionException;
-
-@Service
-public class QueueService {
-    private final GopherQueueClient client;
-
-    public QueueService() {
-        this.client = new GopherQueueClient("http://localhost:8080");
-    }
-
-    public String submitEmail(String to, String subject) throws ExecutionException, InterruptedException {
-        Job job = client.submit("email", Map.of(
-            "to", to,
-            "subject", subject
-        )).get(); // Blocking wait for submission ack
-        return job.getId();
-    }
-
-    @PreDestroy
-    public void cleanup() {
-        client.close();
-    }
-}
 ```
 
 ---

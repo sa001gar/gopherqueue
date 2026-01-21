@@ -79,9 +79,5 @@ eggs/
 .installed.cfg
 *.egg
 
-# Java
-sdks/java/target/
-*.class
-*.jar
-*.war
+
 
