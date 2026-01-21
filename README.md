@@ -1,231 +1,247 @@
 # GopherQueue
 
+<div align="center">
+
 [![Go Reference](https://pkg.go.dev/badge/github.com/sa001gar/gopherqueue.svg)](https://pkg.go.dev/github.com/sa001gar/gopherqueue)
 [![Go Report Card](https://goreportcard.com/badge/github.com/sa001gar/gopherqueue)](https://goreportcard.com/report/github.com/sa001gar/gopherqueue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Enterprise-grade, local-first background job engine for Go.**
+**🚀 Enterprise-grade, local-first background job engine for Go**
 
-GopherQueue is a production-ready background job processing system that prioritizes reliability, simplicity, and operational ease. Unlike distributed systems that require external message brokers, GopherQueue runs entirely locally with persistent storage, making it perfect for single-server deployments, edge computing, and scenarios where operational simplicity matters.
+_Zero external dependencies • BoltDB persistence • Multi-language SDKs_
 
-## Features
+[Quick Start](#-quick-start) •
+[SDKs](#-multi-language-sdks) •
+[Documentation](#-documentation) •
+[Contributing](#contributing)
 
-- **Durable by Default**: BoltDB-backed persistence ensures jobs survive crashes and restarts
-- **Priority Queues**: Critical, High, Normal, Low, and Bulk priority levels
-- **Automatic Retries**: Configurable retry strategies with exponential backoff
-- **Full Observability**: Prometheus metrics, structured logging, health checks
-- **Panic Recovery**: Handlers that panic are caught and the job is properly failed
-- **Checkpointing**: Long-running jobs can save progress for crash recovery
-- **Job Dependencies**: Jobs can wait for other jobs to complete
-- **Idempotency**: Built-in deduplication via idempotency keys
-- **Security Ready**: API key authentication, role-based authorization
+</div>
 
-## Quick Start
+---
 
-### Installation
+## ✨ Features
+
+| Feature                 | Description                                                   |
+| ----------------------- | ------------------------------------------------------------- |
+| 💾 **Durable Storage**  | BoltDB-backed persistence — jobs survive crashes and restarts |
+| ⚡ **Priority Queues**  | Critical, High, Normal, Low, and Bulk priority levels         |
+| 🔄 **Smart Retries**    | Exponential, linear, or constant backoff strategies           |
+| 📊 **Observability**    | Prometheus metrics, structured logging, health checks         |
+| 🛡️ **Fault Tolerant**   | Panic recovery, checkpointing, graceful shutdown              |
+| 🔐 **Security Ready**   | API key auth, role-based authorization                        |
+| 🔗 **Job Dependencies** | Chain jobs with wait conditions                               |
+| 🆔 **Idempotency**      | Built-in deduplication via idempotency keys                   |
+
+---
+
+## 🚀 Quick Start
+
+### Install
 
 ```bash
 go install github.com/sa001gar/gopherqueue/cmd/gq@latest
 ```
 
-### Start the Server
+### Start Server
 
 ```bash
-# Start with default settings (10 workers, BoltDB storage)
-gq serve
-
-# Or with custom configuration
-gq serve --http :8080 --workers 20 --data-dir ./my-data
+gq serve                                              # Default: 10 workers, port 8080
+gq serve --http :8080 --workers 20 --data-dir ./data  # Custom config
 ```
 
-### Submit Jobs
+### 🐳 Docker
 
 ```bash
-# Submit via CLI
-gq submit --type echo --payload '{"message": "Hello World!"}'
-
-# Check status
-gq status --stats
-
-# List jobs
-gq status --state running
+docker run -d --name gopherqueue -p 8080:8080 -v gq_data:/data sa001gar/gopherqueue:latest
 ```
 
-### Submit via HTTP API
+### Submit a Job
 
 ```bash
-# Submit a job
+# CLI
+gq submit --type email --payload '{"to": "user@example.com"}'
+
+# HTTP API
 curl -X POST http://localhost:8080/api/v1/jobs \
   -H "Content-Type: application/json" \
-  -d '{
-    "type": "email",
-    "payload": {"to": "user@example.com", "subject": "Welcome!"},
-    "priority": 1
-  }'
-
-# Check job status
-curl http://localhost:8080/api/v1/jobs/{job-id}
-
-# Get server statistics
-curl http://localhost:8080/api/v1/stats
+  -d '{"type": "email", "payload": {"to": "user@example.com"}, "priority": 1}'
 ```
 
-## Use as a Library
+---
 
-```go
-package main
+## 📦 Multi-Language SDKs
 
-import (
-	"context"
-	"log"
-	"time"
+Use GopherQueue from any language with our official SDKs.
 
-	"github.com/sa001gar/gopherqueue/core"
-	"github.com/sa001gar/gopherqueue/persistence"
-	"github.com/sa001gar/gopherqueue/scheduler"
-	"github.com/sa001gar/gopherqueue/worker"
-)
+<table>
+<tr>
+<td width="33%">
 
-func main() {
-	ctx := context.Background()
+### 🐍 Python
 
-	// Initialize BoltDB store
-	store, err := persistence.NewBoltStore("./data")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
-
-	// Create scheduler
-	sched := scheduler.NewPriorityScheduler(store, nil)
-	sched.Start(ctx)
-
-	// Create worker pool
-	pool := worker.NewSimplePool(store, sched, &worker.WorkerConfig{
-		Concurrency: 10,
-	})
-
-	// Register job handlers
-	pool.RegisterHandler("email", func(ctx context.Context, jctx worker.JobContext) error {
-		job := jctx.Job()
-		log.Printf("Sending email: %s", string(job.Payload))
-		// Do work...
-		return nil
-	})
-
-	pool.Start(ctx)
-
-	// Submit a job
-	job := core.NewJob("email", []byte(`{"to": "user@example.com"}`),
-		core.WithPriority(core.PriorityHigh),
-		core.WithMaxAttempts(3),
-	)
-	store.Create(ctx, job)
-	sched.Enqueue(ctx, job)
-
-	// Keep running...
-	select {}
-}
+```bash
+pip install gopherqueue
 ```
 
-## Core Concepts
+```python
+from gopherqueue import GopherQueueSync
 
-### Job States
+queue = GopherQueueSync("http://localhost:8080")
+job = queue.submit("email", {"to": "user@example.com"})
+```
+
+</td>
+<td width="33%">
+
+### 📜 TypeScript / JavaScript
+
+```bash
+npm install gopherqueue
+```
+
+```typescript
+import { GopherQueue } from "gopherqueue";
+
+const queue = new GopherQueue("http://localhost:8080");
+const job = await queue.submit("email", { to: "user@example.com" });
+```
+
+</td>
+<td width="33%">
+
+### ☕ Java
+
+```xml
+<dependency>
+  <groupId>dev.gopherqueue</groupId>
+  <artifactId>gopherqueue-sdk</artifactId>
+  <version>1.0.0</version>
+</dependency>
+```
+
+```java
+var client = new GopherQueueClient("http://localhost:8080");
+var job = client.submit("email", Map.of("to", "user@example.com")).get();
+```
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🔄 Job Lifecycle
 
 ```
-pending -> scheduled -> running -> completed
-                    \          \
-                     retrying -> failed -> dead_letter
-                         |
-                      delayed
+                                    ┌─────────────┐
+                                    │  completed  │
+                                    └─────────────┘
+                                          ▲
+                                          │ success
+┌─────────┐    ┌───────────┐    ┌─────────┴───┐
+│ pending │───▶│ scheduled │───▶│   running   │
+└─────────┘    └───────────┘    └──────┬──────┘
+                                       │ failure
+                    ┌──────────────────┴──────────────────┐
+                    ▼                                     │
+             ┌────────────┐                               │
+             │  retrying  │◀──────────────────────────────┤
+             └─────┬──────┘                               │
+                   │ max attempts                         │
+                   ▼                                      ▼
+             ┌──────────┐                          ┌───────────┐
+             │  failed  │─────────────────────────▶│dead_letter│
+             └──────────┘                          └───────────┘
 ```
+
+| State         | Description                                   |
+| ------------- | --------------------------------------------- |
+| `pending`     | Created, waiting to be scheduled              |
+| `scheduled`   | In priority queue, ready for pickup           |
+| `running`     | Worker actively processing                    |
+| `completed`   | Finished successfully                         |
+| `retrying`    | Failed, waiting for retry                     |
+| `failed`      | Exceeded max attempts                         |
+| `dead_letter` | Permanently failed, needs manual intervention |
+
+---
+
+## ⚙️ Configuration
+
+| Flag                 | Default  | Description               |
+| -------------------- | -------- | ------------------------- |
+| `--http`             | `:8080`  | HTTP server address       |
+| `--workers`          | `10`     | Concurrent worker count   |
+| `--data-dir`         | `./data` | BoltDB storage directory  |
+| `--shutdown-timeout` | `30s`    | Graceful shutdown timeout |
 
 ### Priority Levels
 
-| Priority | Value | Use Case                             |
-| -------- | ----- | ------------------------------------ |
-| Critical | 0     | System alerts, payment confirmations |
-| High     | 1     | User-initiated actions               |
-| Normal   | 2     | Standard background work (default)   |
-| Low      | 3     | Batch processing, reports            |
-| Bulk     | 4     | Data migrations, cleanup             |
+| Priority | Value | Use Case                 |
+| -------- | ----- | ------------------------ |
+| Critical | 0     | System alerts, payments  |
+| High     | 1     | User-initiated actions   |
+| Normal   | 2     | Standard background work |
+| Low      | 3     | Batch processing         |
+| Bulk     | 4     | Data migrations          |
 
-### Retry Strategies
+---
 
-- **Exponential**: Doubles delay each attempt (default)
-- **Linear**: Fixed increment each attempt
-- **Constant**: Fixed delay between attempts
+## 📚 Documentation
 
-## Configuration
+| Guide                                     | Description                                    |
+| ----------------------------------------- | ---------------------------------------------- |
+| 📖 [SDK Guide](docs/SDK_GUIDE.md)         | Complete SDK reference with framework examples |
+| 🚀 [Deployment](docs/DEPLOYMENT.md)       | Self-hosting, Docker, Kubernetes               |
+| 🔌 [API Spec](docs/API_SPEC.md)           | REST API documentation                         |
+| 🏗️ [Architecture](docs/ARCHITECTURE.md)   | System design & internals                      |
+| 🔐 [Security](docs/SECURITY.md)           | Auth, authorization, best practices            |
+| 📊 [Observability](docs/OBSERVABILITY.md) | Metrics, logging, monitoring                   |
 
-### Server Configuration
+### Framework Guides
 
-| Flag                 | Default  | Description                      |
-| -------------------- | -------- | -------------------------------- |
-| `--http`             | `:8080`  | HTTP server address              |
-| `--workers`          | `10`     | Number of worker goroutines      |
-| `--data-dir`         | `./data` | BoltDB data directory            |
-| `--shutdown-timeout` | `30s`    | Graceful shutdown timeout        |
-| `--bolt`             | `true`   | Use BoltDB (false for in-memory) |
+| Framework          | Link                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| 🐍 Django          | [Complete Integration Guide](docs/SDK_GUIDE.md#django-python---complete-integration-guide) |
+| ⚛️ Next.js         | [API Routes Example](docs/SDK_GUIDE.md#nextjs-nodejs)                                      |
+| 🍃 Spring Boot     | [Service Example](docs/SDK_GUIDE.md#spring-boot-java)                                      |
+| 🌶️ Flask / FastAPI | [Python Web Frameworks](docs/SDK_GUIDE.md#flask--fastapi)                                  |
 
-### Job Options
+---
 
-```go
-job := core.NewJob("type", payload,
-    core.WithPriority(core.PriorityCritical),
-    core.WithDelay(5*time.Minute),
-    core.WithTimeout(30*time.Minute),
-    core.WithMaxAttempts(5),
-    core.WithIdempotencyKey("unique-key"),
-    core.WithTags(map[string]string{"env": "prod"}),
-    core.WithBackoff(core.BackoffExponential, time.Second, time.Hour, 2.0),
-)
-```
-
-## Observability
-
-### Health Endpoints
-
-- `GET /health` - Full health status
-- `GET /live` - Liveness probe (always returns 200 if server is up)
-- `GET /ready` - Readiness probe (checks all components)
-
-### Metrics
-
-- `GET /metrics` - JSON metrics endpoint
-- Jobs enqueued/completed/failed/retried
-- Processing time statistics
-- Queue depth
-- Worker utilization
-
-## Project Structure
+## 🏗️ Project Structure
 
 ```
 gopherqueue/
-├── api/          # HTTP API server and handlers
-├── cli/          # Command-line interface
-├── cmd/gq/       # Main entry point
-├── core/         # Core types (Job, errors, options)
-├── docs/         # Documentation
-├── observability/ # Metrics and health checks
-├── persistence/  # Storage (BoltDB, memory)
-├── recovery/     # Stuck job detection and recovery
-├── scheduler/    # Job scheduling and priority queue
-├── security/     # Authentication and authorization
-├── tests/        # Test documentation
-└── worker/       # Job execution
+├── api/           # HTTP API handlers
+├── cli/           # Command-line interface
+├── cmd/gq/        # Main entry point
+├── core/          # Core types & options
+├── docs/          # Documentation
+├── observability/ # Metrics & health
+├── persistence/   # Storage (BoltDB)
+├── scheduler/     # Priority queue
+├── sdks/          # Python, JS, Java SDKs
+├── security/      # Auth & authorization
+└── worker/        # Job execution
 ```
+
+---
 
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
+Contributions welcome! Please read our [Contributing Guide](CONTRIBUTING.md).
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE).
 
-## Acknowledgments
+---
 
-- [BoltDB](https://github.com/etcd-io/bbolt) - The embedded key/value database
-- [Cobra](https://github.com/spf13/cobra) - CLI framework
-- Inspired by Sidekiq, Machinery, and Asynq
+<div align="center">
+
+**Built with ❤️ for developers who value simplicity**
+
+[⬆ Back to top](#gopherqueue)
+
+</div>

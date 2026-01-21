@@ -27,6 +27,9 @@ vendor/
 *.swo
 *~
 
+# dev
+/dev/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -55,3 +58,30 @@ temp/
 
 # Private deployment instructions
 DEPLOY_INSTRUCTIONS.md
+
+# SDK Build Artifacts
+# JavaScript
+sdks/javascript/node_modules/
+sdks/javascript/dist/
+
+# Python
+sdks/python/dist/
+sdks/python/*.egg-info/
+sdks/python/.eggs/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+eggs/
+.installed.cfg
+*.egg
+
+# Java
+sdks/java/target/
+*.class
+*.jar
+*.war
+

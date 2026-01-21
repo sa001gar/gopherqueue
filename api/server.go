@@ -25,6 +25,7 @@ type Server struct {
 	health     observability.HealthChecker
 	auth       security.Authenticator
 	authz      security.Authorizer
+	eventBus   *EventBus
 
 	config *ServerConfig
 }
@@ -36,6 +37,8 @@ type ServerConfig struct {
 	WriteTimeout   time.Duration
 	MaxRequestSize int64
 	AuthEnabled    bool
+	CORSEnabled    bool
+	CORSOrigins    []string
 }
 
 // DefaultServerConfig returns sensible defaults.
@@ -46,6 +49,8 @@ func DefaultServerConfig() *ServerConfig {
 		WriteTimeout:   30 * time.Second,
 		MaxRequestSize: 10 * 1024 * 1024, // 10MB
 		AuthEnabled:    false,
+		CORSEnabled:    true,
+		CORSOrigins:    []string{"*"},
 	}
 }
 
@@ -67,6 +72,7 @@ func NewServer(
 		metrics:   observability.NewSimpleMetrics(),
 		health:    observability.NewSimpleHealthChecker(store, sched, pool),
 		authz:     security.NewSimpleAuthorizer(),
+		eventBus:  NewEventBus(),
 		config:    config,
 	}
 
@@ -89,14 +95,23 @@ func (s *Server) SetAuthenticator(auth security.Authenticator) {
 	s.config.AuthEnabled = true
 }
 
+// GetEventBus returns the event bus for publishing events.
+func (s *Server) GetEventBus() *EventBus {
+	return s.eventBus
+}
+
 // registerRoutes registers all API routes.
 func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Jobs API
 	mux.HandleFunc("/api/v1/jobs", s.handleJobs)
 	mux.HandleFunc("/api/v1/jobs/", s.handleJobByID)
+	mux.HandleFunc("/api/v1/jobs/batch", s.handleBatchSubmit)
 
 	// Stats API
 	mux.HandleFunc("/api/v1/stats", s.handleStats)
+
+	// SSE Events API
+	mux.HandleFunc("/api/v1/events", s.handleEvents)
 
 	// Health endpoints
 	mux.HandleFunc("/health", s.handleHealth)
@@ -105,12 +120,85 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 	// Metrics endpoint
 	mux.HandleFunc("/metrics", s.handleMetrics)
+
+	// API documentation endpoint
+	mux.HandleFunc("/api/v1", s.handleAPIInfo)
+	mux.HandleFunc("/api/v1/", s.handleAPIInfo)
+}
+
+// handleAPIInfo returns API information and available endpoints.
+func (s *Server) handleAPIInfo(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/api/v1" && r.URL.Path != "/api/v1/" {
+		s.writeError(w, http.StatusNotFound, "not_found", "endpoint not found")
+		return
+	}
+
+	info := map[string]interface{}{
+		"name":    "GopherQueue API",
+		"version": "1.0.0",
+		"endpoints": map[string]string{
+			"POST /api/v1/jobs":             "Submit a new job",
+			"GET /api/v1/jobs":              "List jobs with filters",
+			"POST /api/v1/jobs/batch":       "Submit multiple jobs",
+			"GET /api/v1/jobs/{id}":         "Get job by ID",
+			"DELETE /api/v1/jobs/{id}":      "Delete a job",
+			"POST /api/v1/jobs/{id}/wait":   "Wait for job completion (long-polling)",
+			"POST /api/v1/jobs/{id}/cancel": "Cancel a job",
+			"POST /api/v1/jobs/{id}/retry":  "Retry a failed job",
+			"GET /api/v1/jobs/{id}/result":  "Get job result",
+			"GET /api/v1/stats":             "Get queue statistics",
+			"GET /api/v1/events":            "SSE stream for real-time updates",
+			"GET /health":                   "Full health status",
+			"GET /live":                     "Liveness probe",
+			"GET /ready":                    "Readiness probe",
+			"GET /metrics":                  "Metrics endpoint",
+		},
+		"features": []string{
+			"Priority queues (Critical, High, Normal, Low, Bulk)",
+			"Batch job submission (up to 1000 jobs)",
+			"Long-polling job wait",
+			"Server-Sent Events (SSE) for real-time updates",
+			"Automatic retries with exponential backoff",
+			"Job checkpointing for crash recovery",
+			"API key authentication",
+			"Role-based authorization",
+		},
+	}
+
+	s.writeJSON(w, http.StatusOK, info)
 }
 
 // middleware wraps handlers with common middleware.
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+
+		// CORS headers
+		if s.config.CORSEnabled {
+			origin := r.Header.Get("Origin")
+			if origin != "" {
+				allowed := false
+				for _, o := range s.config.CORSOrigins {
+					if o == "*" || o == origin {
+						allowed = true
+						break
+					}
+				}
+				if allowed {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Request-ID")
+					w.Header().Set("Access-Control-Allow-Credentials", "true")
+					w.Header().Set("Access-Control-Max-Age", "86400")
+				}
+			}
+
+			// Handle preflight
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
 
 		// Request ID
 		requestID := r.Header.Get("X-Request-ID")

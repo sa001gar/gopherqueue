@@ -2,9 +2,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,6 +54,111 @@ type StatsResponse struct {
 	Workers interface{}             `json:"workers"`
 }
 
+// BatchSubmitRequest is the request body for batch job submission.
+type BatchSubmitRequest struct {
+	Jobs   []JobSubmitRequest `json:"jobs"`
+	Atomic bool               `json:"atomic"` // All-or-nothing semantics
+}
+
+// BatchSubmitResponse is the response for batch job submission.
+type BatchSubmitResponse struct {
+	Total    int                    `json:"total"`
+	Accepted int                    `json:"accepted"`
+	Rejected int                    `json:"rejected"`
+	Results  []BatchSubmitJobResult `json:"results"`
+}
+
+// BatchSubmitJobResult is the result for a single job in batch submission.
+type BatchSubmitJobResult struct {
+	Index   int         `json:"index"`
+	Success bool        `json:"success"`
+	Job     JobResponse `json:"job,omitempty"`
+	Error   string      `json:"error,omitempty"`
+}
+
+// WaitRequest is the request body for waiting on a job.
+type WaitRequest struct {
+	Timeout string `json:"timeout"` // e.g., "30s"
+}
+
+// WaitResponse is the response for waiting on a job.
+type WaitResponse struct {
+	ID        string          `json:"id"`
+	State     string          `json:"state"`
+	Completed bool            `json:"completed"`
+	Success   bool            `json:"success,omitempty"`
+	Result    *core.JobResult `json:"result,omitempty"`
+	TimedOut  bool            `json:"timed_out,omitempty"`
+}
+
+// SSEEvent represents a Server-Sent Event.
+type SSEEvent struct {
+	Event string      `json:"event"`
+	Data  interface{} `json:"data"`
+	ID    string      `json:"id,omitempty"`
+}
+
+// EventBus manages SSE subscriptions for real-time job updates.
+type EventBus struct {
+	subscribers map[string][]chan SSEEvent
+	mu          sync.RWMutex
+}
+
+// NewEventBus creates a new event bus.
+func NewEventBus() *EventBus {
+	return &EventBus{
+		subscribers: make(map[string][]chan SSEEvent),
+	}
+}
+
+// Subscribe subscribes to events for a specific job or all jobs.
+func (eb *EventBus) Subscribe(jobID string) chan SSEEvent {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+
+	ch := make(chan SSEEvent, 100)
+	eb.subscribers[jobID] = append(eb.subscribers[jobID], ch)
+	return ch
+}
+
+// Unsubscribe removes a subscription.
+func (eb *EventBus) Unsubscribe(jobID string, ch chan SSEEvent) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+
+	subscribers := eb.subscribers[jobID]
+	for i, sub := range subscribers {
+		if sub == ch {
+			eb.subscribers[jobID] = append(subscribers[:i], subscribers[i+1:]...)
+			close(ch)
+			break
+		}
+	}
+}
+
+// Publish sends an event to all subscribers.
+func (eb *EventBus) Publish(jobID string, event SSEEvent) {
+	eb.mu.RLock()
+	defer eb.mu.RUnlock()
+
+	// Send to job-specific subscribers
+	for _, ch := range eb.subscribers[jobID] {
+		select {
+		case ch <- event:
+		default:
+			// Channel full, skip
+		}
+	}
+
+	// Send to wildcard subscribers (subscribe to all)
+	for _, ch := range eb.subscribers["*"] {
+		select {
+		case ch <- event:
+		default:
+		}
+	}
+}
+
 // handleJobs handles /api/v1/jobs endpoints.
 func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -89,6 +197,8 @@ func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
 			s.retryJob(w, r, id)
 		case "result":
 			s.getJobResult(w, r, id)
+		case "wait":
+			s.waitForJob(w, r, id)
 		default:
 			s.writeError(w, http.StatusNotFound, "not_found", "resource not found")
 		}
@@ -105,20 +215,233 @@ func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// submitJob handles job submission.
-func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
-	var req JobSubmitRequest
+// handleBatchSubmit handles /api/v1/jobs/batch endpoint.
+func (s *Server) handleBatchSubmit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+
+	var req BatchSubmitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
 		return
 	}
 
-	if req.Type == "" {
-		s.writeError(w, http.StatusBadRequest, "validation_error", "job type is required")
+	if len(req.Jobs) == 0 {
+		s.writeError(w, http.StatusBadRequest, "validation_error", "at least one job is required")
 		return
 	}
 
-	// Build job options
+	if len(req.Jobs) > 1000 {
+		s.writeError(w, http.StatusBadRequest, "validation_error", "maximum 1000 jobs per batch")
+		return
+	}
+
+	response := BatchSubmitResponse{
+		Total:   len(req.Jobs),
+		Results: make([]BatchSubmitJobResult, len(req.Jobs)),
+	}
+
+	// Process jobs
+	var createdJobs []*core.Job
+	for i, jobReq := range req.Jobs {
+		result := BatchSubmitJobResult{Index: i}
+
+		if jobReq.Type == "" {
+			result.Success = false
+			result.Error = "job type is required"
+			response.Rejected++
+			response.Results[i] = result
+			if req.Atomic {
+				s.writeError(w, http.StatusBadRequest, "validation_error", fmt.Sprintf("job %d: type is required", i))
+				return
+			}
+			continue
+		}
+
+		job := s.createJobFromRequest(jobReq)
+		createdJobs = append(createdJobs, job)
+		result.Success = true
+		result.Job = jobToResponse(job)
+		response.Accepted++
+		response.Results[i] = result
+	}
+
+	// Persist and enqueue jobs
+	for i, job := range createdJobs {
+		if err := s.store.Create(r.Context(), job); err != nil {
+			if req.Atomic {
+				s.writeError(w, http.StatusInternalServerError, "internal_error", fmt.Sprintf("failed to create job %d: %v", i, err))
+				return
+			}
+			response.Results[i].Success = false
+			response.Results[i].Error = err.Error()
+			response.Accepted--
+			response.Rejected++
+			continue
+		}
+
+		if err := s.scheduler.Enqueue(r.Context(), job); err != nil {
+			if req.Atomic {
+				s.writeError(w, http.StatusInternalServerError, "internal_error", fmt.Sprintf("failed to enqueue job %d: %v", i, err))
+				return
+			}
+		}
+
+		s.metrics.RecordJobEnqueued(job.Type, int(job.Priority))
+
+		// Publish SSE event
+		if s.eventBus != nil {
+			s.eventBus.Publish(job.ID.String(), SSEEvent{
+				Event: "job.created",
+				Data:  jobToResponse(job),
+				ID:    job.ID.String(),
+			})
+		}
+	}
+
+	s.writeJSON(w, http.StatusCreated, response)
+}
+
+// waitForJob handles long-polling wait for job completion.
+func (s *Server) waitForJob(w http.ResponseWriter, r *http.Request, id uuid.UUID) {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+
+	// Parse timeout
+	timeout := 30 * time.Second
+	if r.Method == http.MethodPost {
+		var req WaitRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.Timeout != "" {
+			if d, err := time.ParseDuration(req.Timeout); err == nil {
+				timeout = d
+			}
+		}
+	} else {
+		if t := r.URL.Query().Get("timeout"); t != "" {
+			if d, err := time.ParseDuration(t); err == nil {
+				timeout = d
+			}
+		}
+	}
+
+	// Cap timeout at 5 minutes
+	if timeout > 5*time.Minute {
+		timeout = 5 * time.Minute
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
+
+	// Poll for job completion
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Timeout - return current state
+			job, err := s.store.Get(r.Context(), id)
+			if err != nil {
+				s.writeError(w, http.StatusNotFound, "not_found", "job not found")
+				return
+			}
+			s.writeJSON(w, http.StatusOK, WaitResponse{
+				ID:        job.ID.String(),
+				State:     string(job.State),
+				Completed: job.IsTerminal(),
+				TimedOut:  true,
+			})
+			return
+
+		case <-ticker.C:
+			job, err := s.store.Get(r.Context(), id)
+			if err != nil {
+				s.writeError(w, http.StatusNotFound, "not_found", "job not found")
+				return
+			}
+
+			if job.IsTerminal() {
+				response := WaitResponse{
+					ID:        job.ID.String(),
+					State:     string(job.State),
+					Completed: true,
+					Success:   job.State == core.JobStateCompleted,
+				}
+
+				// Get result if available
+				if result, err := s.store.GetResult(r.Context(), id); err == nil {
+					response.Result = result
+				}
+
+				s.writeJSON(w, http.StatusOK, response)
+				return
+			}
+		}
+	}
+}
+
+// handleEvents handles SSE endpoint for real-time job updates.
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Get job filter (optional)
+	jobID := r.URL.Query().Get("job_id")
+	if jobID == "" {
+		jobID = "*" // Subscribe to all
+	}
+
+	// Subscribe to events
+	ch := s.eventBus.Subscribe(jobID)
+	defer s.eventBus.Unsubscribe(jobID, ch)
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		s.writeError(w, http.StatusInternalServerError, "internal_error", "streaming not supported")
+		return
+	}
+
+	// Send initial connection event
+	fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"connected\"}\n\n")
+	flusher.Flush()
+
+	// Keep-alive ticker
+	keepAlive := time.NewTicker(30 * time.Second)
+	defer keepAlive.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-keepAlive.C:
+			fmt.Fprintf(w, ": keepalive\n\n")
+			flusher.Flush()
+		case event := <-ch:
+			data, _ := json.Marshal(event.Data)
+			fmt.Fprintf(w, "event: %s\ndata: %s\n", event.Event, data)
+			if event.ID != "" {
+				fmt.Fprintf(w, "id: %s\n", event.ID)
+			}
+			fmt.Fprintf(w, "\n")
+			flusher.Flush()
+		}
+	}
+}
+
+// createJobFromRequest creates a job from a submit request.
+func (s *Server) createJobFromRequest(req JobSubmitRequest) *core.Job {
 	var opts []core.JobOption
 
 	if req.IdempotencyKey != "" {
@@ -150,8 +473,24 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 		opts = append(opts, core.WithTags(req.Tags))
 	}
 
+	return core.NewJob(req.Type, req.Payload, opts...)
+}
+
+// submitJob handles job submission.
+func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
+	var req JobSubmitRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
+		return
+	}
+
+	if req.Type == "" {
+		s.writeError(w, http.StatusBadRequest, "validation_error", "job type is required")
+		return
+	}
+
 	// Create job
-	job := core.NewJob(req.Type, req.Payload, opts...)
+	job := s.createJobFromRequest(req)
 
 	// Save to store
 	if err := s.store.Create(r.Context(), job); err != nil {
@@ -179,6 +518,15 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 
 	// Record metric
 	s.metrics.RecordJobEnqueued(job.Type, int(job.Priority))
+
+	// Publish SSE event
+	if s.eventBus != nil {
+		s.eventBus.Publish(job.ID.String(), SSEEvent{
+			Event: "job.created",
+			Data:  jobToResponse(job),
+			ID:    job.ID.String(),
+		})
+	}
 
 	s.writeJSON(w, http.StatusCreated, jobToResponse(job))
 }
@@ -261,6 +609,16 @@ func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request, id uuid.UUID)
 	}
 
 	job, _ := s.store.Get(r.Context(), id)
+
+	// Publish SSE event
+	if s.eventBus != nil && job != nil {
+		s.eventBus.Publish(job.ID.String(), SSEEvent{
+			Event: "job.cancelled",
+			Data:  jobToResponse(job),
+			ID:    job.ID.String(),
+		})
+	}
+
 	s.writeJSON(w, http.StatusOK, jobToResponse(job))
 }
 
@@ -286,6 +644,16 @@ func (s *Server) retryJob(w http.ResponseWriter, r *http.Request, id uuid.UUID) 
 	}
 
 	job, _ := s.store.Get(r.Context(), id)
+
+	// Publish SSE event
+	if s.eventBus != nil && job != nil {
+		s.eventBus.Publish(job.ID.String(), SSEEvent{
+			Event: "job.retried",
+			Data:  jobToResponse(job),
+			ID:    job.ID.String(),
+		})
+	}
+
 	s.writeJSON(w, http.StatusOK, jobToResponse(job))
 }
 
@@ -318,6 +686,15 @@ func (s *Server) deleteJob(w http.ResponseWriter, r *http.Request, id uuid.UUID)
 		}
 		s.writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
+	}
+
+	// Publish SSE event
+	if s.eventBus != nil {
+		s.eventBus.Publish(id.String(), SSEEvent{
+			Event: "job.deleted",
+			Data:  map[string]string{"id": id.String()},
+			ID:    id.String(),
+		})
 	}
 
 	w.WriteHeader(http.StatusNoContent)

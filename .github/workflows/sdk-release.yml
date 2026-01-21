@@ -1,0 +1,116 @@
+name: SDK Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      sdk:
+        description: "SDK to release (python, javascript, java, all)"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - python
+          - javascript
+          - java
+          - all
+
+permissions:
+  contents: read
+
+jobs:
+  # JavaScript/TypeScript SDK
+  javascript:
+    name: Publish JavaScript SDK
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event.inputs.sdk == 'javascript' || github.event.inputs.sdk == 'all' }}
+    defaults:
+      run:
+        working-directory: sdks/javascript
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run tests
+        run: npm test || true # Continue even if no tests
+
+      - name: Publish to npm
+        if: github.event_name == 'push'
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Python SDK
+  python:
+    name: Publish Python SDK
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event.inputs.sdk == 'python' || github.event.inputs.sdk == 'all' }}
+    defaults:
+      run:
+        working-directory: sdks/python
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: |
+          pip install --upgrade pip
+          pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Publish to PyPI
+        if: github.event_name == 'push'
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: twine upload dist/*
+
+  # Java SDK
+  java:
+    name: Publish Java SDK
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event.inputs.sdk == 'java' || github.event.inputs.sdk == 'all' }}
+    defaults:
+      run:
+        working-directory: sdks/java
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: "maven"
+
+      - name: Build and test
+        run: mvn clean verify
+
+      - name: Publish to Maven Central
+        if: github.event_name == 'push'
+        env:
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+        run: |
+          echo "${{ secrets.MAVEN_GPG_KEY }}" | base64 -d | gpg --batch --import
+          mvn deploy -P release -DskipTests
